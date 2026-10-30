@@ -24,5 +24,9 @@ export default async function handler(req, res) {
       setCookie(res, sign(u.id)); return res.json({ email })
     }
     res.status(404).json({})
-  } catch (e) { res.status(500).json({ error: 'Erro no servidor.' }) }
+  } catch (e) { console.error('ERRO_AUTH:', e);
+  return res.status(500).json({
+    error: 'Erro interno no servidor.'
+  });
+}
 }
