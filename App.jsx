@@ -122,6 +122,21 @@ function Auth({ onIn }) {
     <div className="r">{err}</div><button className="link" onClick={() => { setReg(!reg); setErr('') }}>{reg ? 'Já tenho conta' : 'Criar minha conta'}</button></div>
 }
 export default function App() {
+  const [theme, setTheme] = useState(() => {
+    try { return ['light', 'dark', 'auto'].includes(localStorage.getItem('jarvis-theme')) ? localStorage.getItem('jarvis-theme') : 'dark' }
+    catch { return 'dark' }
+  })
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const apply = () => { document.documentElement.dataset.theme = theme === 'auto' ? (media.matches ? 'dark' : 'light') : theme }
+    apply()
+    try { localStorage.setItem('jarvis-theme', theme) } catch {}
+    media.addEventListener?.('change', apply)
+    return () => media.removeEventListener?.('change', apply)
+  }, [theme])
+  const themeControl = <label className="theme-control">Tema <select aria-label="Escolher tema" value={theme} onChange={e => setTheme(e.target.value)}>
+    <option value="light">☀️ Claro</option><option value="dark">🌙 Escuro</option><option value="auto">⚙️ Automático</option>
+  </select></label>
   const [user, setUser] = useState(undefined), [D, setD] = useState({ services: [], expenses: [], goal: 0 }), [tab, setTab] = useState('painel'), [err, setErr] = useState('')
   const load = () => api('data').then(setD).catch(e => { if (e.status === 401) setUser(null); else setErr(e.message) })
   useEffect(() => { api('auth?a=me').then(u => setUser(u.email)).catch(() => setUser(null)) }, [])
@@ -131,9 +146,9 @@ export default function App() {
     addS: wrap(v => api('data?a=service', 'POST', v)), addE: wrap(v => api('data?a=expense', 'POST', v)),
     goal: wrap(g => api('data?a=goal', 'PUT', { goal: g })), del: wrap((k, id) => api(`data?t=${k}&i=${id}`, 'DELETE')) }
   if (user === undefined) return <div className="wrap mut">Carregando…</div>
-  if (!user) return <Auth onIn={setUser} />
+  if (!user) return <><div className="auth-theme">{themeControl}</div><Auth onIn={setUser} /></>
   const T = [['painel', 'Painel'], ['servicos', 'Serviços'], ['metas', 'Metas'], ['relat', 'Relatórios'], ['ia', 'JARVIS IA']]
-  return <div className="wrap"><div className="top"><span className="logo">JARVIS</span><span className="mut">{user}</span>
+  return <div className="wrap"><div className="top"><span className="logo">JARVIS</span><span className="mut user-email">{user}</span>{themeControl}
     <button className="btn" onClick={() => api('auth?a=logout', 'POST').then(() => setUser(null))}>Sair</button></div>
     <div className="nav">{T.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
     {err && <div className="card r" style={{ marginBottom: 10 }}>{err}</div>}
