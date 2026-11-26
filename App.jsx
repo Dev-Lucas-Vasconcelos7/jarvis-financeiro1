@@ -221,5 +221,5 @@ export default function App() {
     <div className="nav">{T.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
     {err && <div className="card r" style={{ marginBottom: 10 }}>{err}</div>}
     {tab === 'painel' && <><Greeting key={user} D={D} user={user} greeted={greeted} /><Painel D={D} /></>}{tab === 'servicos' && <Servicos D={D} act={act} />}{tab === 'metas' && <Metas D={D} act={act} />}
-    {tab === 'relat' && <Relat D={D} />}{tab === 'ia' && <IA D={D} act={act} />}{tab === 'future' && <Future D={D} />}</div>
+    {tab === 'relat' && <Relat D={D} />}{tab === 'ia' && <IA D={D} act={act} />}{tab === 'future' && <Future key={user} D={D} user={user} />}</div>
 }
