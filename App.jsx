@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import Future from './Future.jsx'
 const R = n => (n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const pad = n => String(n).padStart(2, '0')
 const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
@@ -147,11 +148,11 @@ export default function App() {
     goal: wrap(g => api('data?a=goal', 'PUT', { goal: g })), del: wrap((k, id) => api(`data?t=${k}&i=${id}`, 'DELETE')) }
   if (user === undefined) return <div className="wrap mut">Carregando…</div>
   if (!user) return <><div className="auth-theme">{themeControl}</div><Auth onIn={setUser} /></>
-  const T = [['painel', 'Painel'], ['servicos', 'Serviços'], ['metas', 'Metas'], ['relat', 'Relatórios'], ['ia', 'JARVIS IA']]
+  const T = [['painel', 'Painel'], ['servicos', 'Serviços'], ['metas', 'Metas'], ['relat', 'Relatórios'], ['ia', 'JARVIS IA'], ['future', 'JARVIS FUTURE']]
   return <div className="wrap"><div className="top"><span className="logo">JARVIS</span><span className="mut user-email">{user}</span>{themeControl}
     <button className="btn" onClick={() => api('auth?a=logout', 'POST').then(() => setUser(null))}>Sair</button></div>
     <div className="nav">{T.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
     {err && <div className="card r" style={{ marginBottom: 10 }}>{err}</div>}
     {tab === 'painel' && <Painel D={D} />}{tab === 'servicos' && <Servicos D={D} act={act} />}{tab === 'metas' && <Metas D={D} act={act} />}
-    {tab === 'relat' && <Relat D={D} />}{tab === 'ia' && <IA D={D} act={act} />}</div>
+    {tab === 'relat' && <Relat D={D} />}{tab === 'ia' && <IA D={D} act={act} />}{tab === 'future' && <Future D={D} />}</div>
 }
