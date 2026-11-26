@@ -183,7 +183,7 @@ function Greeting({ D, planningText, compact=false, user, greeted }) {
 function Auth({ onIn }) {
   const [reg, setReg] = useState(false), [err, setErr] = useState(''), [busy, setBusy] = useState(false)
   const go = async e => { e.preventDefault(); setBusy(true); setErr(''); const v = Object.fromEntries(new FormData(e.target))
-    try { await api('auth?a=' + (reg ? 'register' : 'login'), 'POST', v); onIn(v.email) } catch (x) { setErr(x.message) } setBusy(false) }
+    try { await api('auth?a=' + (reg ? 'register' : 'login'), 'POST', v); onIn(v.email.trim().toLowerCase()) } catch (x) { setErr(x.message) } setBusy(false) }
   return <div className="lock card"><span className="logo">JARVIS</span><div className="mut">{reg ? 'Crie sua conta' : 'Entre na sua conta'}</div>
     <form onSubmit={go} noValidate><input name="email" type="email" placeholder="E-mail" autoComplete="email" /><input name="password" type="password" placeholder="Senha (mín. 6 caracteres)" autoComplete={reg ? 'new-password' : 'current-password'} />
       <button className="btn pri" disabled={busy}>{busy ? 'Aguarde…' : reg ? 'Criar conta e entrar' : 'Entrar'}</button></form>
@@ -206,19 +206,20 @@ export default function App() {
     <option value="light">☀️ Claro</option><option value="dark">🌙 Escuro</option><option value="auto">⚙️ Automático</option>
   </select></label>
   const [user, setUser] = useState(undefined), [D, setD] = useState({ services: [], expenses: [], goal: 0 }), [tab, setTab] = useState('painel'), [err, setErr] = useState('')
-  const greeted=useRef(false)
-  const load = () => api('data').then(setD).catch(e => { if (e.status === 401) setUser(null); else setErr(e.message) })
-  useEffect(() => { api('auth?a=me').then(u => setUser(u.email)).catch(() => setUser(null)) }, [])
+  const greeted=useRef(false), session=useRef(0), loadSeq=useRef(0)
+  const resetSession=email=>{session.current++;loadSeq.current++;greeted.current=false;setTab('painel');setD({services:[],expenses:[],goal:0});setErr('');setUser(email)}
+  const load = (epoch=session.current) => {const seq=++loadSeq.current;return api('data').then(data=>{if(epoch===session.current&&seq===loadSeq.current)setD(data)}).catch(e=>{if(epoch!==session.current||seq!==loadSeq.current)return;if(e.status===401)resetSession(null);else setErr(e.message)})}
+  useEffect(() => { api('auth?a=me').then(u => resetSession(u.email)).catch(() => resetSession(null)) }, [])
   useEffect(() => { if (user) load() }, [user])
-  const wrap = fn => async (...a) => { try { setErr(''); const r = await fn(...a); await load(); return r } catch (e) { if (e.status === 401) setUser(null); setErr(e.message); throw e } }
+  const wrap = fn => async (...a) => { const epoch=session.current;try { setErr(''); const r = await fn(...a); if(epoch===session.current)await load(epoch); return r } catch (e) { if(epoch===session.current){if(e.status===401)resetSession(null);else setErr(e.message)}throw e } }
   const act = {
     addS: wrap(v => api('data?a=service', 'POST', v)), addE: wrap(v => api('data?a=expense', 'POST', v)),
     goal: wrap(g => api('data?a=goal', 'PUT', { goal: g })), del: wrap((k, id) => api(`data?t=${k}&i=${id}`, 'DELETE')) }
   if (user === undefined) return <div className="wrap mut">Carregando…</div>
-  if (!user) return <><div className="auth-theme">{themeControl}</div><Auth onIn={email=>{greeted.current=false;setTab('painel');setD({services:[],expenses:[],goal:0});setUser(email)}} /></>
+  if (!user) return <><div className="auth-theme">{themeControl}</div><Auth onIn={resetSession} /></>
   const T = [['painel', 'Painel'], ['servicos', 'Serviços'], ['metas', 'Metas'], ['relat', 'Relatórios'], ['ia', 'JARVIS IA'], ['future', 'JARVIS FUTURE']]
   return <div className="wrap"><div className="top"><span className="logo">JARVIS</span><span className="mut user-email">{user}</span>{themeControl}
-    <button className="btn" onClick={() => api('auth?a=logout', 'POST').then(() => {greeted.current=false;setD({services:[],expenses:[],goal:0});setUser(null)})}>Sair</button></div>
+    <button className="btn" onClick={() => api('auth?a=logout', 'POST').then(() => resetSession(null)).catch(e=>setErr(e.message))}>Sair</button></div>
     <div className="nav">{T.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
     {err && <div className="card r" style={{ marginBottom: 10 }}>{err}</div>}
     {tab === 'painel' && <><Greeting key={user} D={D} user={user} greeted={greeted} /><Painel D={D} /></>}{tab === 'servicos' && <Servicos D={D} act={act} />}{tab === 'metas' && <Metas D={D} act={act} />}
