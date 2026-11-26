@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Future from './Future.jsx'
 const R = n => (n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const pad = n => String(n).padStart(2, '0')
@@ -114,13 +114,15 @@ function IA({ D, act }) {
     <div className="mut" style={{ fontSize: 12 }}>Exemplos: “gastei R$ 40 com cabo”, “meta de 5000”, “relatório”.</div></div>
 }
 function Greeting({ D }) {
-  const [enabled,setEnabled]=useState(false), [address,setAddress]=useState('senhor'), [voices,setVoices]=useState([]), [voiceId,setVoiceId]=useState(''), [notice,setNotice]=useState('')
+  const [enabled,setEnabled]=useState(false), [address,setAddress]=useState('senhor'), [notice,setNotice]=useState(''), [busy,setBusy]=useState(false), [audioUrl,setAudioUrl]=useState('')
+  const request=useRef(null), player=useRef(null), url=useRef('')
   const st=stats(D,iso(new Date()).slice(0,7))
-  const message=(address==='senhora'?'Bem-vinda de volta, senhora':address==='senhor'?'Bem-vindo de volta, senhor':'Que bom ter você de volta')+'. Preparei um breve resumo das suas finanças. Neste mês, suas receitas somam '+R(st.rev)+', e suas despesas, '+R(st.exp)+'. Seu resultado registrado é de '+R(st.profit)+'. Estou à disposição.'
-  useEffect(()=>{const synth=window.speechSynthesis;if(!synth)return;const refresh=()=>setVoices(synth.getVoices().filter(v=>/^pt[-_]BR$/i.test(v.lang)));refresh();synth.addEventListener('voiceschanged',refresh);return()=>{synth.removeEventListener('voiceschanged',refresh);synth.cancel()}},[])
-  const preferred=voices.find(v=>v.voiceURI===voiceId)||voices.find(v=>/natural|neural|premium|enhanced/i.test(v.name))||voices.find(v=>v.default)||voices[0]
-  const speak=()=>{try {const u=new SpeechSynthesisUtterance(message);u.lang='pt-BR';if(preferred)u.voice=preferred;u.rate=.92;u.pitch=.95;u.volume=1;u.onerror=()=>setNotice('Não foi possível reproduzir a voz. Verifique o áudio do navegador.');window.speechSynthesis.cancel();setNotice('');window.speechSynthesis.speak(u)}catch{setNotice('Síntese de voz indisponível neste navegador.')}}
-  return <div className="card mt jf-greeting"><h3>Assistente JARVIS</h3><p>{message}</p><div className="jf-voice-controls"><label>Tratamento <select value={address} onChange={e=>setAddress(e.target.value)}><option value="senhor">Senhor</option><option value="senhora">Senhora</option><option value="neutro">Neutro</option></select></label><label>Voz em português <select value={voiceId} onChange={e=>setVoiceId(e.target.value)}><option value="">Melhor voz disponível</option>{voices.map(v=><option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>)}</select></label></div><div className="jf-voice-actions"><label><input type="checkbox" checked={enabled} onChange={e=>{setEnabled(e.target.checked);if(!e.target.checked){try{window.speechSynthesis.cancel()}catch{}}}}/> Ativar voz</label><button className="btn pri" disabled={!enabled} onClick={speak}>Ouvir resumo</button></div><p className="mut">Reprodução manual. A naturalidade depende das vozes instaladas no dispositivo.</p>{notice&&<p role="status">{notice}</p>}</div>
+  const greeting=address==='senhora'?'Bem-vinda de volta, senhora.':address==='neutro'?'Que bom ter você de volta.':'Bem-vindo de volta, senhor.'
+  const stop=()=>{request.current?.abort();request.current=null;player.current?.pause();if(url.current)URL.revokeObjectURL(url.current);url.current=''}
+  useEffect(()=>()=>stop(),[])
+  const speak=async()=>{stop();setAudioUrl('');setBusy(true);setNotice('');const controller=new AbortController();request.current=controller
+    try{const r=await fetch('/api/voice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address}),signal:controller.signal});if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||'Não foi possível gerar a voz.')}const blob=await r.blob();if(controller.signal.aborted)return;url.current=URL.createObjectURL(blob);setAudioUrl(url.current)}catch(e){if(!controller.signal.aborted)setNotice(e.message)}finally{if(request.current===controller){request.current=null;setBusy(false)}}}
+  return <div className="card mt jf-greeting"><h3>Assistente JARVIS · Fish Audio</h3><p>{greeting} Estou à disposição para ajudar você a organizar suas finanças.</p><p>Receitas: {R(st.rev)} · Despesas: {R(st.exp)} · Resultado: {R(st.profit)}</p><label>Tratamento <select value={address} onChange={e=>{stop();setAudioUrl('');setBusy(false);setAddress(e.target.value)}}><option value="senhor">Senhor</option><option value="senhora">Senhora</option><option value="neutro">Neutro</option></select></label><div className="jf-voice-actions"><label><input type="checkbox" checked={enabled} onChange={e=>{setEnabled(e.target.checked);if(!e.target.checked){stop();setAudioUrl('');setBusy(false)}}}/> Ativar voz</label><button className="btn pri" disabled={!enabled||busy} onClick={speak}>{busy?'Gerando áudio…':'Gerar saudação'}</button></div>{enabled&&audioUrl&&<audio ref={player} controls src={audioUrl} style={{width:'100%',marginTop:12}}/>}<p className="mut">Teste experimental: apenas a saudação é enviada ao Fish Audio, sem valores financeiros. Após gerar, pressione reproduzir.</p>{notice&&<p role="status">{notice}</p>}</div>
 }
 function Auth({ onIn }) {
   const [reg, setReg] = useState(false), [err, setErr] = useState(''), [busy, setBusy] = useState(false)
