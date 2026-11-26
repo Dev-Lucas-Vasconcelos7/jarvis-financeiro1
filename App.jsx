@@ -113,6 +113,14 @@ function IA({ D, act }) {
       <input value={q} onChange={e => setQ(e.target.value)} placeholder="JARVIS, registrei uma montagem de hardware por R$ 250" /><button className="btn pri">Enviar</button><button type="button" className="btn" onClick={mic}>🎙</button></form>
     <div className="mut" style={{ fontSize: 12 }}>Exemplos: “gastei R$ 40 com cabo”, “meta de 5000”, “relatório”.</div></div>
 }
+function Greeting({ D }) {
+  const [enabled,setEnabled]=useState(false), [address,setAddress]=useState('senhor')
+  const st=stats(D,iso(new Date()).slice(0,7))
+  const message='Bem-vindo de volta'+(address==='neutro'?'':', '+address)+'. Receitas do mês: '+R(st.rev)+'. Despesas: '+R(st.exp)+'. Resultado registrado: '+R(st.profit)+'.'
+  const speak=()=>{try {const u=new SpeechSynthesisUtterance(message);u.lang='pt-BR';window.speechSynthesis.cancel();window.speechSynthesis.speak(u)}catch{}}
+  useEffect(()=>()=>{try{window.speechSynthesis.cancel()}catch{}},[])
+  return <div className="card mt"><h3>Assistente JARVIS</h3><p>{message}</p><label>Tratamento <select value={address} onChange={e=>setAddress(e.target.value)}><option value="senhor">Senhor</option><option value="senhora">Senhora</option><option value="neutro">Neutro</option></select></label><label><input type="checkbox" checked={enabled} onChange={e=>{setEnabled(e.target.checked);if(!e.target.checked){try{window.speechSynthesis.cancel()}catch{}}}}/> Ativar voz</label><button className="btn" disabled={!enabled} onClick={speak}>Ouvir resumo</button><p className="mut">Reprodução manual nesta versão experimental.</p></div>
+}
 function Auth({ onIn }) {
   const [reg, setReg] = useState(false), [err, setErr] = useState(''), [busy, setBusy] = useState(false)
   const go = async e => { e.preventDefault(); setBusy(true); setErr(''); const v = Object.fromEntries(new FormData(e.target))
@@ -153,6 +161,6 @@ export default function App() {
     <button className="btn" onClick={() => api('auth?a=logout', 'POST').then(() => setUser(null))}>Sair</button></div>
     <div className="nav">{T.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
     {err && <div className="card r" style={{ marginBottom: 10 }}>{err}</div>}
-    {tab === 'painel' && <Painel D={D} />}{tab === 'servicos' && <Servicos D={D} act={act} />}{tab === 'metas' && <Metas D={D} act={act} />}
+    {tab === 'painel' && <><Greeting key={user} D={D} /><Painel D={D} /></>}{tab === 'servicos' && <Servicos D={D} act={act} />}{tab === 'metas' && <Metas D={D} act={act} />}
     {tab === 'relat' && <Relat D={D} />}{tab === 'ia' && <IA D={D} act={act} />}{tab === 'future' && <Future D={D} />}</div>
 }
