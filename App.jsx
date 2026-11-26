@@ -79,14 +79,34 @@ function Metas({ D, act }) {
     {D.goal > 0 && <><div className="bar"><i style={{ width: Math.min(100, st.rev / D.goal * 100) + '%' }} /></div>Faltam <b className="c">{R(Math.max(0, D.goal - st.rev))}</b> este mês.</>}</div>
 }
 function Relat({ D }) {
-  const [mon, setMon] = useState(TD.slice(0, 7)), st = stats(D, mon)
+  const [mon, setMon] = useState(iso(new Date()).slice(0,7)), st = stats(D, mon)
+  const [exportError,setExportError]=useState('')
+  const services=[...st.s].sort((a,b)=>a.date.localeCompare(b.date)), expenses=[...st.e].sort((a,b)=>a.date.localeCompare(b.date))
   const K = ({ l, v, c }) => <div className="card"><small>{l}</small><b className={c}>{v}</b></div>
-  return <><div className="card"><h3>Relatório mensal</h3><input type="month" value={mon} onChange={e => setMon(e.target.value || mon)} /></div>
+  const printReport=()=>{
+    setExportError('')
+    const w=window.open('','_blank')
+    if(!w){setExportError('Permita a abertura de uma nova janela para salvar o PDF.');return}
+    w.opener=null
+    const doc=w.document
+    doc.title='Jarvis Financeiro - Relatório '+mon
+    const style=doc.createElement('style');style.textContent='@page{size:A4;margin:16mm}body{font:14px Arial,sans-serif;color:#172033;margin:0}h1{color:#087e9a;font-size:24px}h2{font-size:17px;margin-top:24px}table{width:100%;border-collapse:collapse;margin:12px 0;table-layout:fixed}th,td{text-align:left;padding:8px;border-bottom:1px solid #dce3ea;overflow-wrap:anywhere}th{background:#eef3f7}thead{display:table-header-group}tr{break-inside:avoid}p{line-height:1.5}button{padding:10px 16px}@media print{button{display:none}}';doc.head.append(style)
+    const add=(tag,value,parent=doc.body)=>{const el=doc.createElement(tag);el.textContent=String(value);parent.append(el);return el}
+    add('h1','JARVIS FINANCEIRO');add('p','Relatório financeiro mensal • '+mon.split('-').reverse().join('/'))
+    const table=(headers,rows)=>{const t=doc.createElement('table'),head=t.createTHead(),hr=head.insertRow();headers.forEach(h=>add('th',h,hr));const body=t.createTBody();rows.forEach(row=>{const tr=body.insertRow();row.forEach(v=>add('td',v,tr))});doc.body.append(t)}
+    add('h2','Resumo financeiro');table(['Indicador','Valor'],[['Faturamento',R(st.rev)],['Despesas',R(st.exp)],['Lucro real',R(st.profit)],['Média diária',R(st.avg)],['Serviços',st.s.length],['Dias trabalhados',st.nd]])
+    add('h2','Histórico dos serviços');table(['Data','Serviço','Valor','Pagamento'],services.length?services.map(x=>[fd(x.date),x.name,R(x.value),x.pay||'—']):[['—','Sem serviços','—','—']])
+    add('h2','Histórico de despesas');table(['Data','Descrição','Valor'],expenses.length?expenses.map(x=>[fd(x.date),x.descr||'Despesa',R(x.value)]):[['—','Sem despesas','—']])
+    add('p','Documento gerado a partir dos registros do período selecionado.')
+    const btn=add('button','Imprimir / Salvar como PDF');btn.onclick=()=>w.print();w.focus();w.print()
+  }
+  return <><div className="card"><h3>Relatório mensal</h3><input type="month" value={mon} onChange={e => setMon(e.target.value || mon)} /><button type="button" className="btn pri" onClick={printReport}>Baixar relatório em PDF</button><small>Na janela de impressão, selecione Salvar como PDF.</small>{exportError&&<p role="alert">{exportError}</p>}</div>
     <div className="grid"><K l="Faturamento" v={R(st.rev)} /><K l="Despesas" v={R(st.exp)} c="r" /><K l="Lucro real" v={R(st.profit)} c={st.profit < 0 ? 'r' : 'g'} />
       <K l="Média diária" v={R(st.avg)} /><K l="Melhor dia" v={st.best ? fd(st.best[0]) + ' · ' + R(st.best[1]) : '—'} /><K l="Serviços / dias" v={st.s.length + ' / ' + st.nd} /></div>
-    <div className="card mt"><h3>Histórico dos serviços</h3><div className="sc"><table><tbody>
-      {[...st.s].sort((a, b) => a.date.localeCompare(b.date)).map(x => <tr key={x.id}><td>{fd(x.date)}</td><td>{x.name}</td><td className="g">{R(x.value)}</td><td>{x.pay}</td></tr>)}
-      {!st.s.length && <tr><td className="mut">Sem serviços neste mês.</td></tr>}</tbody></table></div></div></>
+    <div className="card mt"><h3>Histórico dos serviços</h3><div className="sc"><table><thead><tr><th>Data</th><th>Serviço</th><th>Valor</th><th>Pagamento</th></tr></thead><tbody>
+      {services.map(x => <tr key={x.id}><td>{fd(x.date)}</td><td>{x.name}</td><td className="g">{R(x.value)}</td><td>{x.pay}</td></tr>)}
+      {!services.length && <tr><td colSpan={4} className="mut">Sem serviços neste mês.</td></tr>}</tbody></table></div></div>
+    <div className="card mt"><h3>Histórico de despesas</h3><div className="sc"><table><thead><tr><th>Data</th><th>Descrição</th><th>Valor</th></tr></thead><tbody>{expenses.map(x=><tr key={x.id}><td>{fd(x.date)}</td><td>{x.descr||'Despesa'}</td><td className="r">{R(x.value)}</td></tr>)}{!expenses.length&&<tr><td colSpan={3} className="mut">Sem despesas neste mês.</td></tr>}</tbody><tfoot><tr><td colSpan={2}>Total de despesas</td><td className="r">{R(st.exp)}</td></tr></tfoot></table></div></div></>
 }
 function IA({ D, act }) {
   const [log, setLog] = useState([{ j: 1, t: 'Às suas ordens. Digite ou fale um comando.' }]), [pend, setPend] = useState(null), [q, setQ] = useState('')
