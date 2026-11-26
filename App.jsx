@@ -113,6 +113,16 @@ function IA({ D, act }) {
       <input value={q} onChange={e => setQ(e.target.value)} placeholder="JARVIS, registrei uma montagem de hardware por R$ 250" /><button className="btn pri">Enviar</button><button type="button" className="btn" onClick={mic}>🎙</button></form>
     <div className="mut" style={{ fontSize: 12 }}>Exemplos: “gastei R$ 40 com cabo”, “meta de 5000”, “relatório”.</div></div>
 }
+const spokenMoney = value => {
+  const n=Number(value)
+  if(!Number.isFinite(n)||!Number.isSafeInteger(Math.round(Math.abs(n)*100))) return 'valor indisponível'
+  const cents=Math.round((Math.abs(n)+Number.EPSILON)*100), whole=Math.floor(cents/100), fraction=cents%100
+  const fmt=v=>v.toLocaleString('pt-BR',{useGrouping:false})
+  const parts=[]
+  if(whole||!fraction) parts.push(fmt(whole)+(whole===1?' real':' reais'))
+  if(fraction) parts.push(fmt(fraction)+(fraction===1?' centavo':' centavos'))
+  return parts.join(' e ')+(n<0&&cents?' negativos':'')
+}
 function Greeting({ D, planningText, compact=false, user, greeted }) {
   const [enabled,setEnabled]=useState(()=>{try{return localStorage.getItem('jf-voice-muted:'+user)!=='1'}catch{return true}}), [address,setAddress]=useState(()=>{try{return ['senhor','senhora','neutro'].includes(localStorage.getItem('jf-voice-address:'+user))?localStorage.getItem('jf-voice-address:'+user):'senhor'}catch{return 'senhor'}}), [notice,setNotice]=useState(''), [busy,setBusy]=useState(false), [audioUrl,setAudioUrl]=useState(''), [consent,setConsent]=useState(false), [mode,setMode]=useState('greeting')
   const request=useRef(null), player=useRef(null), url=useRef('')
@@ -120,10 +130,10 @@ function Greeting({ D, planningText, compact=false, user, greeted }) {
   const greeting=address==='senhora'?'Bem-vinda de volta, senhora.':address==='neutro'?'Que bom ter você de volta.':'Bem-vindo de volta, senhor.'
   const today=iso(new Date()), ago=n=>{const d=new Date();d.setDate(d.getDate()-n);return iso(d)}
   const totals=(from,to)=>{const filter=x=>x.date>=from&&x.date<=to;const rev=sum(D.services.filter(filter)),exp=sum(D.expenses.filter(filter));return {rev,exp,net:rev-exp}}
-  const describe=(label,t)=>label+': receitas de '+R(t.rev)+', despesas de '+R(t.exp)+' e resultado '+R(t.net)+'.'
+  const describe=(label,t)=>label+': receitas de '+spokenMoney(t.rev)+', despesas de '+spokenMoney(t.exp)+' e resultado '+spokenMoney(t.net)+'.'
   const week=totals(ago(6),today), month=totals(today.slice(0,7)+'-01',today), recent=totals(ago(15),ago(1)), prior=totals(ago(30),ago(16)), all=totals('0000-00-00',today)
   const analysis='Análise financeira. '+(prior.exp>0?'As despesas dos últimos quinze dias completos variaram '+((recent.exp-prior.exp)/prior.exp*100).toFixed(1).replace('.',',')+' por cento em relação ao período anterior. ':'Não há base anterior de despesas para comparação. ')+(recent.rev>0?'A margem registrada foi de '+Math.round((recent.rev-recent.exp)/recent.rev*100)+' por cento. ':'Não há receitas recentes para calcular margem. ')+(all.net+recent.net<0?'Atenção: risco de saldo registrado negativo.':'A projeção histórica não indica saldo negativo.')
-  const plan=planningText||('Planejamento baseado no histórico dos últimos quinze dias completos. Saldo registrado projetado em sete dias: '+R(all.net+recent.net*7/15)+'. Em quinze dias: '+R(all.net+recent.net)+'. Em trinta dias: '+R(all.net+recent.net*2)+'. '+(D.goal>0?'Meta registrada: '+R(D.goal)+'. ':'Nenhuma meta registrada. ')+'Estimativas lineares, sem compromissos futuros não registrados.')
+  const plan=planningText||('Planejamento baseado no histórico dos últimos quinze dias completos. Saldo registrado projetado em sete dias: '+spokenMoney(all.net+recent.net*7/15)+'. Em quinze dias: '+spokenMoney(all.net+recent.net)+'. Em trinta dias: '+spokenMoney(all.net+recent.net*2)+'. '+(D.goal>0?'Meta registrada: '+spokenMoney(D.goal)+'. ':'Nenhuma meta registrada. ')+'Estimativas lineares, sem compromissos futuros não registrados.')
   const reports={week:describe('Relatório dos últimos sete dias',week),month:describe('Relatório do mês até hoje',month),analysis,planning:plan,total:describe('Resumo total registrado até hoje',all)+' '+describe('Últimos sete dias',week)+' '+describe('Mês atual',month)+' '+analysis+' '+plan}
   const stop=()=>{request.current?.abort();request.current=null;player.current?.pause();if(player.current){player.current.removeAttribute('src');player.current.load()}if(url.current)URL.revokeObjectURL(url.current);url.current=''}
   useEffect(()=>()=>stop(),[])
