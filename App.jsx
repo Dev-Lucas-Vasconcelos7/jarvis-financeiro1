@@ -217,11 +217,11 @@ export default function App() {
     goal: wrap(g => api('data?a=goal', 'PUT', { goal: g })), del: wrap((k, id) => api(`data?t=${k}&i=${id}`, 'DELETE')) }
   if (user === undefined) return <div className="wrap mut">Carregando…</div>
   if (!user) return <><div className="auth-theme">{themeControl}</div><Auth onIn={resetSession} /></>
-  const T = [['painel', 'Painel'], ['servicos', 'Serviços'], ['metas', 'Metas'], ['relat', 'Relatórios'], ['ia', 'JARVIS IA'], ['future', 'JARVIS FUTURE']]
+  const T = [['painel', 'Painel'], ['servicos', 'Serviços'], ['metas', 'Metas'], ['relat', 'Relatórios'], ['future', 'JARVIS FUTURE']]
   return <div className="wrap"><div className="top"><span className="logo">JARVIS</span><span className="mut user-email">{user}</span>{themeControl}
     <button className="btn" onClick={() => api('auth?a=logout', 'POST').then(() => resetSession(null)).catch(e=>setErr(e.message))}>Sair</button></div>
     <div className="nav">{T.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
     {err && <div className="card r" style={{ marginBottom: 10 }}>{err}</div>}
     {tab === 'painel' && <><Greeting key={user} D={D} user={user} greeted={greeted} /><Painel D={D} /></>}{tab === 'servicos' && <Servicos D={D} act={act} />}{tab === 'metas' && <Metas D={D} act={act} />}
-    {tab === 'relat' && <Relat D={D} />}{tab === 'ia' && <IA D={D} act={act} />}{tab === 'future' && <Future key={user} D={D} user={user} />}</div>
+    {tab === 'relat' && <Relat D={D} />}{tab === 'future' && <Future key={user} D={D} user={user} />}</div>
 }
