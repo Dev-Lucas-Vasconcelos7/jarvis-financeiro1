@@ -142,8 +142,8 @@ function Greeting({ D, planningText, compact=false, user, greeted }) {
     stop();setAudioUrl('');setBusy(true);setNotice('Preparando áudio…')
     const controller=new AbortController();request.current=controller
     const chunks=selected==='total'?[describe('Resumo total registrado até hoje',all),reports.week,reports.month,reports.analysis,reports.planning]:[reports[selected]]
-    const generate=async report=>{
-      const r=await fetch('/api/voice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address,...(report?{report,consent:true}:{})}),signal:controller.signal})
+    const generate=async (report,ack=false)=>{
+      const r=await fetch('/api/voice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address,...(ack?{ack:true}:{}),...(report?{report,consent:true}:{})}),signal:controller.signal})
       if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||'Erro ao gerar áudio ('+r.status+').')}
       const blob=await r.blob();if(!blob.size)throw new Error('Áudio vazio.');return blob
     }
@@ -162,6 +162,9 @@ function Greeting({ D, planningText, compact=false, user, greeted }) {
     }
     try{
       let pending=prepare(chunks[0])
+      if(selected!=='greeting'){
+        try{const ack=await generate(undefined,true);if(controller.signal.aborted)return;await play(ack)}catch(e){if(controller.signal.aborted)return}
+      }
       for(let i=0;i<chunks.length;i++){
         const result=await pending;if(controller.signal.aborted)return;if(result.error)throw result.error
         if(i+1<chunks.length)pending=prepare(chunks[i+1])
