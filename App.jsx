@@ -137,10 +137,44 @@ function Greeting({ D, planningText, compact=false, user, greeted }) {
   const reports={week:describe('Relatório dos últimos sete dias',week),month:describe('Relatório do mês até hoje',month),analysis,planning:plan,total:describe('Resumo total registrado até hoje',all)+' '+describe('Últimos sete dias',week)+' '+describe('Mês atual',month)+' '+analysis+' '+plan}
   const stop=()=>{request.current?.abort();request.current=null;player.current?.pause();if(player.current){player.current.removeAttribute('src');player.current.load()}if(url.current)URL.revokeObjectURL(url.current);url.current=''}
   useEffect(()=>()=>stop(),[])
-  const speak=async(selected=mode)=>{if(selected!=='greeting'&&!consent){setNotice('Autorize o envio do resumo ao Fish Audio.');return;}stop();setAudioUrl('');setBusy(true);setNotice('');const controller=new AbortController();request.current=controller
-    try{const r=await fetch('/api/voice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address,...(selected==='greeting'?{}:{report:reports[selected],consent:true})}),signal:controller.signal});if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||'Não foi possível gerar a voz.')}const blob=await r.blob();if(controller.signal.aborted)return;url.current=URL.createObjectURL(blob);setAudioUrl(url.current);const a=player.current;if(a){a.src=url.current;try{await a.play()}catch{if(!controller.signal.aborted)setNotice('Toque em Reproduzir para ouvir o áudio.')}}}catch(e){if(!controller.signal.aborted)setNotice(e.message)}finally{if(request.current===controller){request.current=null;setBusy(false)}}}
+  const speak=async(selected=mode)=>{
+    if(selected!=='greeting'&&!consent){setNotice('Autorize o envio do resumo ao Fish Audio.');return}
+    stop();setAudioUrl('');setBusy(true);setNotice('Preparando áudio…')
+    const controller=new AbortController();request.current=controller
+    const chunks=selected==='total'?[describe('Resumo total registrado até hoje',all),reports.week,reports.month,reports.analysis,reports.planning]:[reports[selected]]
+    const generate=async report=>{
+      const r=await fetch('/api/voice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address,...(report?{report,consent:true}:{})}),signal:controller.signal})
+      if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||'Erro ao gerar áudio ('+r.status+').')}
+      const blob=await r.blob();if(!blob.size)throw new Error('Áudio vazio.');return blob
+    }
+    const prepare=report=>generate(report).then(blob=>({blob}),error=>({error}))
+    const play=async blob=>{
+      if(controller.signal.aborted)return
+      const a=player.current;if(!a)throw new Error('Reprodutor indisponível.')
+      if(url.current)URL.revokeObjectURL(url.current)
+      url.current=URL.createObjectURL(blob);setAudioUrl(url.current);a.src=url.current
+      await new Promise((resolve,reject)=>{
+        const clean=()=>{a.removeEventListener('ended',ended);a.removeEventListener('error',failed);controller.signal.removeEventListener('abort',aborted)}
+        const ended=()=>{clean();resolve()},failed=()=>{clean();reject(new Error('Erro na reprodução.'))},aborted=()=>{clean();resolve()}
+        a.addEventListener('ended',ended,{once:true});a.addEventListener('error',failed,{once:true});controller.signal.addEventListener('abort',aborted,{once:true})
+        a.play().catch(()=>{if(!controller.signal.aborted)setNotice('Toque em Reproduzir para continuar o relatório.')})
+      })
+    }
+    try{
+      let pending=prepare(chunks[0])
+      for(let i=0;i<chunks.length;i++){
+        const result=await pending;if(controller.signal.aborted)return;if(result.error)throw result.error
+        if(i+1<chunks.length)pending=prepare(chunks[i+1])
+        setNotice('Narrando trecho '+(i+1)+' de '+chunks.length+'…')
+        await play(result.blob)
+        if(controller.signal.aborted)return
+      }
+      setNotice('Narração concluída.')
+    }catch(e){if(!controller.signal.aborted){controller.abort();setNotice(e.message)}}
+    finally{if(request.current===controller){request.current=null;setBusy(false)}}
+  }
   useEffect(()=>{if(enabled&&!greeted.current){greeted.current=true;speak('greeting')}},[])
-  return <div className="card mt jf-greeting"><h3>Assistente JARVIS · Fish Audio</h3><p>{greeting} Estou à disposição para ajudar você a organizar suas finanças.</p><p>Receitas: {R(st.rev)} · Despesas: {R(st.exp)} · Resultado: {R(st.profit)}</p><label>Tratamento <select value={address} onChange={e=>{stop();setAudioUrl('');setBusy(false);setAddress(e.target.value);try{localStorage.setItem('jf-voice-address:'+user,e.target.value)}catch{}}}><option value="senhor">Senhor</option><option value="senhora">Senhora</option><option value="neutro">Neutro</option></select></label><label>O que deseja ouvir? <select value={mode} onChange={e=>{stop();setAudioUrl('');setBusy(false);setMode(e.target.value)}}>{[['greeting','Saudação'],['week','Relatório semanal'],['month','Relatório mensal'],['analysis','Análise financeira'],['planning','Planejamento'],['total','Resumo completo']].map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label><label><input type="checkbox" checked={consent} onChange={e=>{setConsent(e.target.checked);if(!e.target.checked){stop();setAudioUrl('');setBusy(false)}}}/> Autorizo enviar os valores resumidos ao Fish Audio para gerar a narração.</label><div className="jf-voice-actions"><label><input type="checkbox" checked={enabled} onChange={e=>{setEnabled(e.target.checked);try{localStorage.setItem('jf-voice-muted:'+user,e.target.checked?'0':'1')}catch{}if(!e.target.checked){stop();setAudioUrl('');setBusy(false)}else{speak('greeting')}}}/> Ativar voz</label><button className="btn pri" disabled={!enabled||busy||(mode!=='greeting'&&!consent)} onClick={()=>{if(audioUrl&&player.current){player.current.currentTime=0;player.current.play().catch(()=>setNotice('Toque em Reproduzir no áudio.'))}else speak()}}>{busy?'Preparando áudio…':'Ouvir '+(mode==='greeting'?'saudação':'relatório')}</button></div><audio ref={player} controls hidden={!enabled||!audioUrl} style={{width:'100%',marginTop:12}}/><p className="mut">Teste experimental: relatórios enviam somente valores agregados e texto ao Fish Audio mediante autorização. A reprodução inicia automaticamente quando permitida pelo navegador.</p>{notice&&<p role="status">{notice}</p>}</div>
+  return <div className="card mt jf-greeting"><h3>Assistente JARVIS · Fish Audio</h3><p>{greeting} Estou à disposição para ajudar você a organizar suas finanças.</p><p>Receitas: {R(st.rev)} · Despesas: {R(st.exp)} · Resultado: {R(st.profit)}</p><label>Tratamento <select value={address} onChange={e=>{stop();setAudioUrl('');setBusy(false);setAddress(e.target.value);try{localStorage.setItem('jf-voice-address:'+user,e.target.value)}catch{}}}><option value="senhor">Senhor</option><option value="senhora">Senhora</option><option value="neutro">Neutro</option></select></label><label>O que deseja ouvir? <select value={mode} onChange={e=>{stop();setAudioUrl('');setBusy(false);setMode(e.target.value)}}>{[['greeting','Saudação'],['week','Relatório semanal'],['month','Relatório mensal'],['analysis','Análise financeira'],['planning','Planejamento'],['total','Resumo completo']].map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label><label><input type="checkbox" checked={consent} onChange={e=>{setConsent(e.target.checked);if(!e.target.checked){stop();setAudioUrl('');setBusy(false)}}}/> Autorizo enviar os valores resumidos ao Fish Audio para gerar a narração.</label><div className="jf-voice-actions"><label><input type="checkbox" checked={enabled} onChange={e=>{setEnabled(e.target.checked);try{localStorage.setItem('jf-voice-muted:'+user,e.target.checked?'0':'1')}catch{}if(!e.target.checked){stop();setAudioUrl('');setBusy(false)}else{speak('greeting')}}}/> Ativar voz</label><button className="btn pri" disabled={!enabled||busy||(mode!=='greeting'&&!consent)} onClick={()=>speak()}>{busy?'Narração em andamento…':'Ouvir '+(mode==='greeting'?'saudação':'relatório')}</button></div>{busy&&<button className="btn" onClick={()=>{stop();setAudioUrl('');setBusy(false);setNotice('Narração interrompida.')}}>Parar</button>}<audio ref={player} controls hidden={!enabled||!audioUrl} style={{width:'100%',marginTop:12}}/><p className="mut">Teste experimental: relatórios enviam somente valores agregados e texto ao Fish Audio mediante autorização. A reprodução inicia automaticamente quando permitida pelo navegador.</p>{notice&&<p role="status">{notice}</p>}</div>
 }
 function Auth({ onIn }) {
   const [reg, setReg] = useState(false), [err, setErr] = useState(''), [busy, setBusy] = useState(false)
