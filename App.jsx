@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import Future from './Future.jsx'
 const R = n => (n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const pad = n => String(n).padStart(2, '0')
 const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
@@ -78,14 +79,34 @@ function Metas({ D, act }) {
     {D.goal > 0 && <><div className="bar"><i style={{ width: Math.min(100, st.rev / D.goal * 100) + '%' }} /></div>Faltam <b className="c">{R(Math.max(0, D.goal - st.rev))}</b> este mês.</>}</div>
 }
 function Relat({ D }) {
-  const [mon, setMon] = useState(TD.slice(0, 7)), st = stats(D, mon)
+  const [mon, setMon] = useState(iso(new Date()).slice(0,7)), st = stats(D, mon)
+  const [exportError,setExportError]=useState('')
+  const services=[...st.s].sort((a,b)=>a.date.localeCompare(b.date)), expenses=[...st.e].sort((a,b)=>a.date.localeCompare(b.date))
   const K = ({ l, v, c }) => <div className="card"><small>{l}</small><b className={c}>{v}</b></div>
-  return <><div className="card"><h3>Relatório mensal</h3><input type="month" value={mon} onChange={e => setMon(e.target.value || mon)} /></div>
+  const printReport=()=>{
+    setExportError('')
+    const w=window.open('','_blank')
+    if(!w){setExportError('Permita a abertura de uma nova janela para salvar o PDF.');return}
+    w.opener=null
+    const doc=w.document
+    doc.title='Jarvis Financeiro - Relatório '+mon
+    const style=doc.createElement('style');style.textContent='@page{size:A4;margin:16mm}body{font:14px Arial,sans-serif;color:#172033;margin:0}h1{color:#087e9a;font-size:24px}h2{font-size:17px;margin-top:24px}table{width:100%;border-collapse:collapse;margin:12px 0;table-layout:fixed}th,td{text-align:left;padding:8px;border-bottom:1px solid #dce3ea;overflow-wrap:anywhere}th{background:#eef3f7}thead{display:table-header-group}tr{break-inside:avoid}p{line-height:1.5}button{padding:10px 16px}@media print{button{display:none}}';doc.head.append(style)
+    const add=(tag,value,parent=doc.body)=>{const el=doc.createElement(tag);el.textContent=String(value);parent.append(el);return el}
+    add('h1','JARVIS FINANCEIRO');add('p','Relatório financeiro mensal • '+mon.split('-').reverse().join('/'))
+    const table=(headers,rows)=>{const t=doc.createElement('table'),head=t.createTHead(),hr=head.insertRow();headers.forEach(h=>add('th',h,hr));const body=t.createTBody();rows.forEach(row=>{const tr=body.insertRow();row.forEach(v=>add('td',v,tr))});doc.body.append(t)}
+    add('h2','Resumo financeiro');table(['Indicador','Valor'],[['Faturamento',R(st.rev)],['Despesas',R(st.exp)],['Lucro real',R(st.profit)],['Média diária',R(st.avg)],['Serviços',st.s.length],['Dias trabalhados',st.nd]])
+    add('h2','Histórico dos serviços');table(['Data','Serviço','Valor','Pagamento'],services.length?services.map(x=>[fd(x.date),x.name,R(x.value),x.pay||'—']):[['—','Sem serviços','—','—']])
+    add('h2','Histórico de despesas');table(['Data','Descrição','Valor'],expenses.length?expenses.map(x=>[fd(x.date),x.descr||'Despesa',R(x.value)]):[['—','Sem despesas','—']])
+    add('p','Documento gerado a partir dos registros do período selecionado.')
+    const btn=add('button','Imprimir / Salvar como PDF');btn.onclick=()=>w.print();w.focus();w.print()
+  }
+  return <><div className="card"><h3>Relatório mensal</h3><input type="month" value={mon} onChange={e => setMon(e.target.value || mon)} /><button type="button" className="btn pri" onClick={printReport}>Baixar relatório em PDF</button><small>Na janela de impressão, selecione Salvar como PDF.</small>{exportError&&<p role="alert">{exportError}</p>}</div>
     <div className="grid"><K l="Faturamento" v={R(st.rev)} /><K l="Despesas" v={R(st.exp)} c="r" /><K l="Lucro real" v={R(st.profit)} c={st.profit < 0 ? 'r' : 'g'} />
       <K l="Média diária" v={R(st.avg)} /><K l="Melhor dia" v={st.best ? fd(st.best[0]) + ' · ' + R(st.best[1]) : '—'} /><K l="Serviços / dias" v={st.s.length + ' / ' + st.nd} /></div>
-    <div className="card mt"><h3>Histórico dos serviços</h3><div className="sc"><table><tbody>
-      {[...st.s].sort((a, b) => a.date.localeCompare(b.date)).map(x => <tr key={x.id}><td>{fd(x.date)}</td><td>{x.name}</td><td className="g">{R(x.value)}</td><td>{x.pay}</td></tr>)}
-      {!st.s.length && <tr><td className="mut">Sem serviços neste mês.</td></tr>}</tbody></table></div></div></>
+    <div className="card mt"><h3>Histórico dos serviços</h3><div className="sc"><table><thead><tr><th>Data</th><th>Serviço</th><th>Valor</th><th>Pagamento</th></tr></thead><tbody>
+      {services.map(x => <tr key={x.id}><td>{fd(x.date)}</td><td>{x.name}</td><td className="g">{R(x.value)}</td><td>{x.pay}</td></tr>)}
+      {!services.length && <tr><td colSpan={4} className="mut">Sem serviços neste mês.</td></tr>}</tbody></table></div></div>
+    <div className="card mt"><h3>Histórico de despesas</h3><div className="sc"><table><thead><tr><th>Data</th><th>Descrição</th><th>Valor</th></tr></thead><tbody>{expenses.map(x=><tr key={x.id}><td>{fd(x.date)}</td><td>{x.descr||'Despesa'}</td><td className="r">{R(x.value)}</td></tr>)}{!expenses.length&&<tr><td colSpan={3} className="mut">Sem despesas neste mês.</td></tr>}</tbody><tfoot><tr><td colSpan={2}>Total de despesas</td><td className="r">{R(st.exp)}</td></tr></tfoot></table></div></div></>
 }
 function IA({ D, act }) {
   const [log, setLog] = useState([{ j: 1, t: 'Às suas ordens. Digite ou fale um comando.' }]), [pend, setPend] = useState(null), [q, setQ] = useState('')
@@ -112,10 +133,78 @@ function IA({ D, act }) {
       <input value={q} onChange={e => setQ(e.target.value)} placeholder="JARVIS, registrei uma montagem de hardware por R$ 250" /><button className="btn pri">Enviar</button><button type="button" className="btn" onClick={mic}>🎙</button></form>
     <div className="mut" style={{ fontSize: 12 }}>Exemplos: “gastei R$ 40 com cabo”, “meta de 5000”, “relatório”.</div></div>
 }
+const spokenMoney = value => {
+  const n=Number(value)
+  if(!Number.isFinite(n)||!Number.isSafeInteger(Math.round(Math.abs(n)*100))) return 'valor indisponível'
+  const cents=Math.round((Math.abs(n)+Number.EPSILON)*100), whole=Math.floor(cents/100), fraction=cents%100
+  const fmt=v=>v.toLocaleString('pt-BR',{useGrouping:false})
+  const parts=[]
+  if(whole||!fraction) parts.push(fmt(whole)+(whole===1?' real':' reais'))
+  if(fraction) parts.push(fmt(fraction)+(fraction===1?' centavo':' centavos'))
+  return parts.join(' e ')+(n<0&&cents?' negativos':'')
+}
+function Greeting({ D, planningText, compact=false, user, greeted }) {
+  const [enabled,setEnabled]=useState(()=>{try{return localStorage.getItem('jf-voice-muted:'+user)!=='1'}catch{return true}}), [address,setAddress]=useState(()=>{try{return ['senhor','senhora','neutro'].includes(localStorage.getItem('jf-voice-address:'+user))?localStorage.getItem('jf-voice-address:'+user):'senhor'}catch{return 'senhor'}}), [notice,setNotice]=useState(''), [busy,setBusy]=useState(false), [audioUrl,setAudioUrl]=useState(''), [consent,setConsent]=useState(false), [mode,setMode]=useState('greeting')
+  const request=useRef(null), player=useRef(null), url=useRef('')
+  const st=stats(D,iso(new Date()).slice(0,7))
+  const greeting=address==='senhora'?'Bem-vinda de volta, senhora.':address==='neutro'?'Que bom ter você de volta.':'Bem-vindo de volta, senhor.'
+  const today=iso(new Date()), ago=n=>{const d=new Date();d.setDate(d.getDate()-n);return iso(d)}
+  const totals=(from,to)=>{const filter=x=>x.date>=from&&x.date<=to;const rev=sum(D.services.filter(filter)),exp=sum(D.expenses.filter(filter));return {rev,exp,net:rev-exp}}
+  const describe=(label,t)=>label+': receitas de '+spokenMoney(t.rev)+', despesas de '+spokenMoney(t.exp)+' e resultado '+spokenMoney(t.net)+'.'
+  const week=totals(ago(6),today), month=totals(today.slice(0,7)+'-01',today), recent=totals(ago(15),ago(1)), prior=totals(ago(30),ago(16)), all=totals('0000-00-00',today)
+  const analysis='Análise financeira. '+(prior.exp>0?'As despesas dos últimos quinze dias completos variaram '+((recent.exp-prior.exp)/prior.exp*100).toFixed(1).replace('.',',')+' por cento em relação ao período anterior. ':'Não há base anterior de despesas para comparação. ')+(recent.rev>0?'A margem registrada foi de '+Math.round((recent.rev-recent.exp)/recent.rev*100)+' por cento. ':'Não há receitas recentes para calcular margem. ')+(all.net+recent.net<0?'Atenção: risco de saldo registrado negativo.':'A projeção histórica não indica saldo negativo.')
+  const profileReport=()=>{try{const v=JSON.parse(localStorage.getItem('jf-future-v1:'+encodeURIComponent(user)+':profileConfirmed')||'null');if(!v||!['monthlyRevenue','monthlyExpense','monthlyNet','reserve'].every(k=>Number.isFinite(v[k])))return ' Nenhum perfil financeiro confirmado.';return ' Perfil financeiro. Renda mensal estimada de '+spokenMoney(v.monthlyRevenue)+'. Custos e despesas de '+spokenMoney(v.monthlyExpense)+'. Disponibilidade mensal de '+spokenMoney(v.monthlyNet)+'. Reserva informada de '+spokenMoney(v.reserve)+'. '+(v.monthlyExpense>0?'A reserva cobre aproximadamente '+(v.reserve/v.monthlyExpense).toFixed(1).replace('.',',')+' meses de despesas.':'Sem base de despesas para estimar a cobertura da reserva.')+' Valores do último perfil salvo.'}catch{return ' Perfil financeiro indisponível.'}}
+  const visionReport=()=>{try{const v=JSON.parse(localStorage.getItem('jf-future-v1:'+encodeURIComponent(user)+':visionConfirmed')||'null');if(!v||!['target','saved','monthly'].every(k=>Number.isFinite(v[k])&&v[k]>=0)||v.target<=0)return ' Nenhum planejamento Jarvis Vision confirmado.';const remaining=Math.max(0,v.target-v.saved),months=v.monthly>0?Math.ceil(remaining/v.monthly):null;return ' Jarvis Vision. Sua meta é de '+spokenMoney(v.target)+'. Você já reservou '+spokenMoney(v.saved)+'. Faltam '+spokenMoney(remaining)+'. Sua economia mensal planejada é de '+spokenMoney(v.monthly)+'. '+(remaining===0?'Meta atingida.':months===null?'Informe uma economia mensal positiva para estimar o prazo.':'Prazo estimado de '+months+(months===1?' mês.':' meses.'))}catch{return ' Planejamento Jarvis Vision indisponível.'}}
+  const plan=planningText||('Planejamento baseado no histórico dos últimos quinze dias completos. Saldo registrado projetado em sete dias: '+spokenMoney(all.net+recent.net*7/15)+'. Em quinze dias: '+spokenMoney(all.net+recent.net)+'. Em trinta dias: '+spokenMoney(all.net+recent.net*2)+'. '+(D.goal>0?'Meta registrada: '+spokenMoney(D.goal)+'. ':'Nenhuma meta registrada. ')+'Estimativas lineares, sem compromissos futuros não registrados.')
+  const reports={week:describe('Relatório dos últimos sete dias',week),month:describe('Relatório do mês até hoje',month),analysis,planning:plan,total:describe('Resumo total registrado até hoje',all)+' '+describe('Últimos sete dias',week)+' '+describe('Mês atual',month)+' '+analysis+' '+plan}
+  const stop=()=>{request.current?.abort();request.current=null;player.current?.pause();if(player.current){player.current.removeAttribute('src');player.current.load()}if(url.current)URL.revokeObjectURL(url.current);url.current=''}
+  useEffect(()=>()=>stop(),[])
+  const speak=async(selected=mode)=>{
+    if(selected!=='greeting'&&!consent){setNotice('Autorize o envio do resumo ao Fish Audio.');return}
+    stop();setAudioUrl('');setBusy(true);setNotice('Preparando áudio…')
+    const controller=new AbortController();request.current=controller
+    const chunks=selected==='total'?[describe('Resumo total registrado até hoje',all),reports.week,reports.month,reports.analysis,profileReport(),reports.planning,visionReport()]:selected==='planning'?[reports.planning,profileReport(),visionReport()]:selected==='analysis'?[reports.analysis,profileReport()]:[reports[selected]]
+    const generate=async (report,ack=false)=>{
+      const r=await fetch('/api/voice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address,...(ack?{ack:true}:{}),...(report?{report,consent:true}:{})}),signal:controller.signal})
+      if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||'Erro ao gerar áudio ('+r.status+').')}
+      const blob=await r.blob();if(!blob.size)throw new Error('Áudio vazio.');return blob
+    }
+    const prepare=report=>generate(report).then(blob=>({blob}),error=>({error}))
+    const play=async blob=>{
+      if(controller.signal.aborted)return
+      const a=player.current;if(!a)throw new Error('Reprodutor indisponível.')
+      if(url.current)URL.revokeObjectURL(url.current)
+      url.current=URL.createObjectURL(blob);setAudioUrl(url.current);a.src=url.current
+      await new Promise((resolve,reject)=>{
+        const clean=()=>{a.removeEventListener('ended',ended);a.removeEventListener('error',failed);controller.signal.removeEventListener('abort',aborted)}
+        const ended=()=>{clean();resolve()},failed=()=>{clean();reject(new Error('Erro na reprodução.'))},aborted=()=>{clean();resolve()}
+        a.addEventListener('ended',ended,{once:true});a.addEventListener('error',failed,{once:true});controller.signal.addEventListener('abort',aborted,{once:true})
+        a.play().catch(()=>{if(!controller.signal.aborted)setNotice('Toque em Reproduzir para continuar o relatório.')})
+      })
+    }
+    try{
+      let pending=prepare(chunks[0])
+      if(selected!=='greeting'){
+        try{const ack=await generate(undefined,true);if(controller.signal.aborted)return;await play(ack)}catch(e){if(controller.signal.aborted)return}
+      }
+      for(let i=0;i<chunks.length;i++){
+        const result=await pending;if(controller.signal.aborted)return;if(result.error)throw result.error
+        if(i+1<chunks.length)pending=prepare(chunks[i+1])
+        setNotice('Narrando trecho '+(i+1)+' de '+chunks.length+'…')
+        await play(result.blob)
+        if(controller.signal.aborted)return
+      }
+      setNotice('Narração concluída.')
+    }catch(e){if(!controller.signal.aborted){controller.abort();setNotice(e.message)}}
+    finally{if(request.current===controller){request.current=null;setBusy(false)}}
+  }
+  useEffect(()=>{if(enabled&&!greeted.current){greeted.current=true;speak('greeting')}},[])
+  return <div className="card mt jf-greeting"><h3>Assistente JARVIS · Fish Audio</h3><p>{greeting} Estou à disposição para ajudar você a organizar suas finanças.</p><p>Receitas: {R(st.rev)} · Despesas: {R(st.exp)} · Resultado: {R(st.profit)}</p><label>Tratamento <select value={address} onChange={e=>{stop();setAudioUrl('');setBusy(false);setAddress(e.target.value);try{localStorage.setItem('jf-voice-address:'+user,e.target.value)}catch{}}}><option value="senhor">Senhor</option><option value="senhora">Senhora</option><option value="neutro">Neutro</option></select></label><label>O que deseja ouvir? <select value={mode} onChange={e=>{stop();setAudioUrl('');setBusy(false);setMode(e.target.value)}}>{[['greeting','Saudação'],['week','Relatório semanal'],['month','Relatório mensal'],['analysis','Análise financeira'],['planning','Planejamento'],['total','Resumo completo']].map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label><label><input type="checkbox" checked={consent} onChange={e=>{setConsent(e.target.checked);if(!e.target.checked){stop();setAudioUrl('');setBusy(false)}}}/> Autorizo enviar os valores resumidos ao Fish Audio para gerar a narração.</label><div className="jf-voice-actions"><label><input type="checkbox" checked={enabled} onChange={e=>{setEnabled(e.target.checked);try{localStorage.setItem('jf-voice-muted:'+user,e.target.checked?'0':'1')}catch{}if(!e.target.checked){stop();setAudioUrl('');setBusy(false)}else{speak('greeting')}}}/> Ativar voz</label><button className="btn pri" disabled={!enabled||busy||(mode!=='greeting'&&!consent)} onClick={()=>speak()}>{busy?'Narração em andamento…':'Ouvir '+(mode==='greeting'?'saudação':'relatório')}</button></div>{busy&&<button className="btn" onClick={()=>{stop();setAudioUrl('');setBusy(false);setNotice('Narração interrompida.')}}>Parar</button>}<audio ref={player} controls hidden={!enabled||!audioUrl} style={{width:'100%',marginTop:12}}/><p className="mut">Teste experimental: relatórios enviam somente valores agregados e texto ao Fish Audio mediante autorização. A reprodução inicia automaticamente quando permitida pelo navegador.</p>{notice&&<p role="status">{notice}</p>}</div>
+}
 function Auth({ onIn }) {
   const [reg, setReg] = useState(false), [err, setErr] = useState(''), [busy, setBusy] = useState(false)
   const go = async e => { e.preventDefault(); setBusy(true); setErr(''); const v = Object.fromEntries(new FormData(e.target))
-    try { await api('auth?a=' + (reg ? 'register' : 'login'), 'POST', v); onIn(v.email) } catch (x) { setErr(x.message) } setBusy(false) }
+    try { await api('auth?a=' + (reg ? 'register' : 'login'), 'POST', v); onIn(v.email.trim().toLowerCase()) } catch (x) { setErr(x.message) } setBusy(false) }
   return <div className="lock card"><span className="logo">JARVIS</span><div className="mut">{reg ? 'Crie sua conta' : 'Entre na sua conta'}</div>
     <form onSubmit={go} noValidate><input name="email" type="email" placeholder="E-mail" autoComplete="email" /><input name="password" type="password" placeholder="Senha (mín. 6 caracteres)" autoComplete={reg ? 'new-password' : 'current-password'} />
       <button className="btn pri" disabled={busy}>{busy ? 'Aguarde…' : reg ? 'Criar conta e entrar' : 'Entrar'}</button></form>
@@ -138,20 +227,22 @@ export default function App() {
     <option value="light">☀️ Claro</option><option value="dark">🌙 Escuro</option><option value="auto">⚙️ Automático</option>
   </select></label>
   const [user, setUser] = useState(undefined), [D, setD] = useState({ services: [], expenses: [], goal: 0 }), [tab, setTab] = useState('painel'), [err, setErr] = useState('')
-  const load = () => api('data').then(setD).catch(e => { if (e.status === 401) setUser(null); else setErr(e.message) })
-  useEffect(() => { api('auth?a=me').then(u => setUser(u.email)).catch(() => setUser(null)) }, [])
+  const greeted=useRef(false), session=useRef(0), loadSeq=useRef(0)
+  const resetSession=email=>{session.current++;loadSeq.current++;greeted.current=false;setTab('painel');setD({services:[],expenses:[],goal:0});setErr('');setUser(email)}
+  const load = (epoch=session.current) => {const seq=++loadSeq.current;return api('data').then(data=>{if(epoch===session.current&&seq===loadSeq.current)setD(data)}).catch(e=>{if(epoch!==session.current||seq!==loadSeq.current)return;if(e.status===401)resetSession(null);else setErr(e.message)})}
+  useEffect(() => { api('auth?a=me').then(u => resetSession(u.email)).catch(() => resetSession(null)) }, [])
   useEffect(() => { if (user) load() }, [user])
-  const wrap = fn => async (...a) => { try { setErr(''); const r = await fn(...a); await load(); return r } catch (e) { if (e.status === 401) setUser(null); setErr(e.message); throw e } }
+  const wrap = fn => async (...a) => { const epoch=session.current;try { setErr(''); const r = await fn(...a); if(epoch===session.current)await load(epoch); return r } catch (e) { if(epoch===session.current){if(e.status===401)resetSession(null);else setErr(e.message)}throw e } }
   const act = {
     addS: wrap(v => api('data?a=service', 'POST', v)), addE: wrap(v => api('data?a=expense', 'POST', v)),
     goal: wrap(g => api('data?a=goal', 'PUT', { goal: g })), del: wrap((k, id) => api(`data?t=${k}&i=${id}`, 'DELETE')) }
   if (user === undefined) return <div className="wrap mut">Carregando…</div>
-  if (!user) return <><div className="auth-theme">{themeControl}</div><Auth onIn={setUser} /></>
-  const T = [['painel', 'Painel'], ['servicos', 'Serviços'], ['metas', 'Metas'], ['relat', 'Relatórios'], ['ia', 'JARVIS IA']]
+  if (!user) return <><div className="auth-theme">{themeControl}</div><Auth onIn={resetSession} /></>
+  const T = [['painel', 'Painel'], ['servicos', 'Serviços'], ['metas', 'Metas'], ['relat', 'Relatórios'], ['future', 'JARVIS FUTURE']]
   return <div className="wrap"><div className="top"><span className="logo">JARVIS</span><span className="mut user-email">{user}</span>{themeControl}
-    <button className="btn" onClick={() => api('auth?a=logout', 'POST').then(() => setUser(null))}>Sair</button></div>
+    <button className="btn" onClick={() => api('auth?a=logout', 'POST').then(() => resetSession(null)).catch(e=>setErr(e.message))}>Sair</button></div>
     <div className="nav">{T.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
     {err && <div className="card r" style={{ marginBottom: 10 }}>{err}</div>}
-    {tab === 'painel' && <Painel D={D} />}{tab === 'servicos' && <Servicos D={D} act={act} />}{tab === 'metas' && <Metas D={D} act={act} />}
-    {tab === 'relat' && <Relat D={D} />}{tab === 'ia' && <IA D={D} act={act} />}</div>
+    {tab === 'painel' && <><Greeting key={user} D={D} user={user} greeted={greeted} /><Painel D={D} /></>}{tab === 'servicos' && <Servicos D={D} act={act} />}{tab === 'metas' && <Metas D={D} act={act} />}
+    {tab === 'relat' && <Relat D={D} />}{tab === 'future' && <Future key={user} D={D} user={user} />}</div>
 }
